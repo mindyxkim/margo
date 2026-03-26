@@ -28,7 +28,7 @@ imh = findobj(gui_handles.axes_handle, '-depth', 3, 'Type', 'image');
 %% Experimental Setup
 
 % Initialize tracking variables
-trackDat.fields = {'centroid'; 'time'; 'Turns'; 'StimeStatus'}; % properties of the tracked objects to be recorded
+trackDat.fields = {'centroid'; 'time'; 'Turns'; 'StimStatus'}; % properties of the tracked objects to be recorded
 
 % initialize labels, files, and cam/video
 [trackDat, expmt] = autoInitialize(trackDat, expmt, gui_handles);
@@ -105,8 +105,7 @@ stim.global_rect = full_rect;        % drive whole tray
 
 expmt.meta.stim = stim;
 
-% Initialize statuses
-trackDat.StimStatus  = false(expmt.meta.roi.n, 1);
+% Initialize status
 trackDat.StimStatus = false(expmt.meta.roi.n, 1);
 
 %% Main Experimental Loop

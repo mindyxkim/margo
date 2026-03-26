@@ -1,9 +1,10 @@
 function expmt = analyze_ymaze_stim(expmt, varargin)
 %
-% Analysis for y-maze with optional light-on information (stimulus).
-% Now supports:
-%   - StimStatus: pulse-level ON/OFF (per frame)
-%   - BlockStatus: 5-min ON/OFF blocks (per frame)
+% Analysis for y-maze with light stimulus.
+% Derives ON-stim vs OFF-stim periods from turn timestamps and the
+% stim timing parameters stored in expmt.meta.stim (on_dur, off_dur).
+% StimStatus (pulse-level ON/OFF per frame) is recorded per turn when
+% available.
 %
 
 %% Parse inputs, read data from hard disk, format in master struct, process centroid data
@@ -14,19 +15,8 @@ clearvars -except expmt trackProps options
 
 turns = expmt.data.Turns.raw();
 
-% Optional: stimulus status (pulse-level, may be absent in older experiments)
-if isfield(expmt.data, 'StimStatus')
-    stimStatus = expmt.data.StimStatus.raw();   % same shape as turns/time
-else
-    stimStatus = [];
-end
-
-% Optional: block-level status (5-min ON/OFF, may be absent in older experiments)
-if isfield(expmt.data, 'BlockStatus')
-    blockStatus = expmt.data.BlockStatus.raw(); % same shape as turns/time
-else
-    blockStatus = [];
-end
+% Pulse-level stimulus status (per frame)
+stimStatus = expmt.data.StimStatus.raw();
 
 % Remove first turn for each fly
 turn_idx = turns ~= 0;
@@ -43,9 +33,9 @@ clear first_turn_col first_turn_idx first_turn_row
 %% Calculate turn probability and related metrics
 
 props = {'n'; 't'; 'sequence'; 'switchiness'; 'clumpiness'; 'rBias'; ...
-         'active'; 'lightOn'; 'blockOn'; ...
-         'rBias_ON_block'; 'rBias_OFF_block'; ...
-         'n_ON_block'; 'n_OFF_block'};
+         'active'; 'lightOn'; ...
+         'rBias_ON_stim'; 'rBias_OFF_stim'; ...
+         'n_ON_stim'; 'n_OFF_stim'};
 addprops(expmt.data.Turns, props);
 
 expmt.data.Turns.n = sum(turns ~= 0) - 1;
@@ -54,30 +44,22 @@ maxN = max(expmt.data.Turns.n);
 expmt.data.Turns.t        = NaN(maxN, expmt.meta.num_traces);
 expmt.data.Turns.sequence = NaN(maxN, expmt.meta.num_traces);
 expmt.data.Turns.lightOn  = NaN(maxN, expmt.meta.num_traces);   % pulse-level
-expmt.data.Turns.blockOn  = NaN(maxN, expmt.meta.num_traces);   % 5-min block-level
 
 % cumulative experiment time
 tElapsed = cumsum(expmt.data.time.raw());
 
 for i = 1:expmt.meta.num_traces
-    
+
     % indices of turn frames for this fly
     idx = turns(:, i) ~= 0;
     nTurns_i = sum(idx);
-    
+
     % time stamps of each turn
     expmt.data.Turns.t(1:nTurns_i, i) = tElapsed(idx);
-    
-    % pulse-level light state at each turn, if available
-    if ~isempty(stimStatus)
-        expmt.data.Turns.lightOn(1:nTurns_i, i) = stimStatus(idx, i);
-    end
-    
-    % block-level state at each turn, if available
-    if ~isempty(blockStatus)
-        expmt.data.Turns.blockOn(1:nTurns_i, i) = blockStatus(idx, i);
-    end
-    
+
+    % pulse-level light state at each turn
+    expmt.data.Turns.lightOn(1:nTurns_i, i) = stimStatus(idx, i);
+
     % calculate turn sequence (right = 1, left = 0)
     tSeq = turns(idx, i);
     tSeq = diff(tSeq);
@@ -86,10 +68,10 @@ for i = 1:expmt.meta.num_traces
     else
         expmt.data.Turns.sequence(1:length(tSeq), i) = (tSeq == -1 | tSeq == 2);
     end
-    
+
 end
 
-% Right turn probability (overall, across all blocks)
+% Right turn probability (overall)
 expmt.data.Turns.n = sum(~isnan(expmt.data.Turns.sequence), 'omitnan');
 expmt.data.Turns.rBias = ...
     sum(expmt.data.Turns.sequence, 'omitnan') ./ expmt.data.Turns.n;
@@ -99,19 +81,19 @@ expmt.data.Turns.switchiness = NaN(expmt.meta.num_traces, 1);
 expmt.data.Turns.clumpiness  = NaN(expmt.meta.num_traces, 1);
 
 for i = 1:expmt.meta.num_traces
-    
+
     idx = ~isnan(expmt.data.Turns.sequence(:, i));
     s = expmt.data.Turns.sequence(idx, i);
     r = expmt.data.Turns.rBias(i);
     n = expmt.data.Turns.n(i);
     t = expmt.data.Turns.t(idx, i);
     iti = (t(2:end) - t(1:end-1));
-    
+
     expmt.data.Turns.switchiness(i) = ...
         sum((s(1:end-1) + s(2:end)) == 1) / (2 * r * (1 - r) * n);
     expmt.data.Turns.clumpiness(i) = ...
         std(iti) / mean(iti);
-    
+
 end
 
 expmt.data.Turns.active = expmt.data.Turns.n > 39;
@@ -123,64 +105,69 @@ end
 clearvars -except expmt options
 disp("Try saving as csv")
 
-%% Block-based ON / OFF right-turn bias (5-min ON vs 5-min OFF)
+%% ON-stim vs OFF-stim right-turn bias
+%  Derive stim state from turn timestamps using stim timing parameters
 
-seq   = expmt.data.Turns.sequence;  % per-turn transitions (right=1, left=0)
-block = expmt.data.Turns.blockOn;   % per-turn block state (1=ON block, 0=OFF block)
+seq    = expmt.data.Turns.sequence;
+turnT  = expmt.data.Turns.t;
 [maxN, nFlies] = size(seq);
 
-% Map blockOn per turn to blockOn per transition (k->k+1) using second turn's block
-blockOn_seq = NaN(maxN, nFlies);
+% Stim cycle parameters
+on_dur  = expmt.meta.stim.on_dur;
+off_dur = expmt.meta.stim.off_dur;
+cycle_T = on_dur + off_dur;
+
+% For each turn transition (k -> k+1), determine stim state from
+% the timestamp of the second turn
+stimState_seq = NaN(maxN, nFlies);
 
 for i = 1:nFlies
-    
-    % Find non-NaN turns for this fly
-    idx_turn = ~isnan(block(:, i));
-    B = block(idx_turn, i);          % block state at each turn
-    nTurns_i = numel(B);
-    
-    % Sequence entries for this fly
-    nSeq_i = sum(~isnan(seq(:, i)));
-    
+
+    idx_valid = ~isnan(turnT(:, i));
+    T = turnT(idx_valid, i);
+    nTurns_i = numel(T);
+    nSeq_i   = sum(~isnan(seq(:, i)));
+
     if nTurns_i >= 2 && nSeq_i > 0
-        % sequence(k) corresponds to transition from turn k -> k+1
-        % define block state from the *second* turn in each pair: B(2:end)
+        % sequence(k) = transition from turn k to turn k+1
+        % assign stim state from the second turn's timestamp
         nUse = min(nSeq_i, nTurns_i - 1);
-        blockOn_seq(1:nUse, i) = B(2:nUse+1);
+        t_second = T(2:nUse+1);
+        stimState_seq(1:nUse, i) = mod(t_second, cycle_T) < on_dur;
     end
 end
 
-valid      = ~isnan(seq) & ~isnan(blockOn_seq);
-isOnBlock  = (blockOn_seq == 1) & valid;
-isOffBlock = (blockOn_seq == 0) & valid;
+valid      = ~isnan(seq) & ~isnan(stimState_seq);
+isON_stim  = (stimState_seq == 1) & valid;
+isOFF_stim = (stimState_seq == 0) & valid;
 
-rBias_ON_block  = NaN(1, nFlies);
-rBias_OFF_block = NaN(1, nFlies);
-n_ON_block      = zeros(1, nFlies);
-n_OFF_block     = zeros(1, nFlies);
+rBias_ON_stim  = NaN(1, nFlies);
+rBias_OFF_stim = NaN(1, nFlies);
+n_ON_stim      = zeros(1, nFlies);
+n_OFF_stim     = zeros(1, nFlies);
 
 for i = 1:nFlies
-    
-    on_i  = isOnBlock(:,  i);
-    off_i = isOffBlock(:, i);
-    
-    n_ON_block(i)  = sum(on_i);
-    n_OFF_block(i) = sum(off_i);
-    
-    if n_ON_block(i) > 0
-        rBias_ON_block(i)  = sum(seq(on_i,  i)) / n_ON_block(i);
+
+    on_i  = isON_stim(:, i);
+    off_i = isOFF_stim(:, i);
+
+    n_ON_stim(i)  = sum(on_i);
+    n_OFF_stim(i) = sum(off_i);
+
+    if n_ON_stim(i) > 0
+        rBias_ON_stim(i)  = sum(seq(on_i, i)) / n_ON_stim(i);
     end
-    if n_OFF_block(i) > 0
-        rBias_OFF_block(i) = sum(seq(off_i, i)) / n_OFF_block(i);
+    if n_OFF_stim(i) > 0
+        rBias_OFF_stim(i) = sum(seq(off_i, i)) / n_OFF_stim(i);
     end
 end
 
-expmt.data.Turns.rBias_ON_block  = rBias_ON_block';
-expmt.data.Turns.rBias_OFF_block = rBias_OFF_block';
-expmt.data.Turns.n_ON_block      = n_ON_block';
-expmt.data.Turns.n_OFF_block     = n_OFF_block';
+expmt.data.Turns.rBias_ON_stim  = rBias_ON_stim';
+expmt.data.Turns.rBias_OFF_stim = rBias_OFF_stim';
+expmt.data.Turns.n_ON_stim      = n_ON_stim';
+expmt.data.Turns.n_OFF_stim     = n_OFF_stim';
 
-%% Generate plots (unchanged overall rBias histogram)
+%% Generate plots
 
 inc  = 0.05;
 bins = -inc/2:inc:1+inc/2;
