@@ -88,7 +88,7 @@ full_rect = Screen('Rect', win);   % [x1 y1 x2 y2] in projector coordinates
 
 % Define stim struct
 stim.bg_color    = bg_color;
-stim.fg_color    = [255 255 255];    % white in 0–255 PTB range
+stim.fg_color    = [128 128 128];    % white in 0–255 PTB range
 
 % 5 min ON, 5 min OFF (in seconds)
 stim.on_dur      = 5 * 60;
