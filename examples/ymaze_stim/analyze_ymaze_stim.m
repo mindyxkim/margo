@@ -3,8 +3,7 @@ function expmt = analyze_ymaze_stim(expmt, varargin)
 % Analysis for y-maze with light stimulus.
 % Derives ON-stim vs OFF-stim periods from turn timestamps and the
 % stim timing parameters stored in expmt.meta.stim (on_dur, off_dur).
-% StimStatus (pulse-level ON/OFF per frame) is recorded per turn when
-% available.
+% StimStatus (ON/OFF per frame) is recorded per turn when available.
 %
 
 %% Parse inputs, read data from hard disk, format in master struct, process centroid data
@@ -15,7 +14,7 @@ clearvars -except expmt trackProps options
 
 turns = expmt.data.Turns.raw();
 
-% Pulse-level stimulus status (per frame)
+% Stimulus status (per frame)
 stimStatus = expmt.data.StimStatus.raw();
 
 % Remove first turn for each fly
@@ -43,7 +42,7 @@ maxN = max(expmt.data.Turns.n);
 
 expmt.data.Turns.t        = NaN(maxN, expmt.meta.num_traces);
 expmt.data.Turns.sequence = NaN(maxN, expmt.meta.num_traces);
-expmt.data.Turns.lightOn  = NaN(maxN, expmt.meta.num_traces);   % pulse-level
+expmt.data.Turns.lightOn  = NaN(maxN, expmt.meta.num_traces);
 
 % cumulative experiment time
 tElapsed = cumsum(expmt.data.time.raw());
@@ -57,7 +56,7 @@ for i = 1:expmt.meta.num_traces
     % time stamps of each turn
     expmt.data.Turns.t(1:nTurns_i, i) = tElapsed(idx);
 
-    % pulse-level light state at each turn
+    % light state at each turn
     expmt.data.Turns.lightOn(1:nTurns_i, i) = stimStatus(idx, i);
 
     % calculate turn sequence (right = 1, left = 0)
@@ -203,7 +202,7 @@ legend(legendLabel);
 
 fname = [expmt.meta.path.fig expmt.meta.date '_hist_handedness'];
 if ~isempty(expmt.meta.path.fig) && options.save
-    hgsave(f, fname);
+    savefig(f, fname);
     close(f);
 end
 

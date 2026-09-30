@@ -88,20 +88,31 @@ full_rect = Screen('Rect', win);   % [x1 y1 x2 y2] in projector coordinates
 
 % Define stim struct
 stim.bg_color    = bg_color;
-stim.fg_color    = [128 128 128];    % white in 0–255 PTB range
+stim.fg_color    = [1 1 1];    % white in 0–255 PTB range
 
-% 5 min ON, 5 min OFF (in seconds)
-stim.on_dur      = 5 * 60;
-stim.off_dur     = 5 * 60;
-
-% 30 Hz pulse, 50% duty cycle (1 frame ON / 1 frame OFF at 60 fps)
-stim.pulse_period = 1/30;
-
-stim.pulse_ct = 0;                    % frame counter for 30 Hz pulsing
 stim.t0 = GetSecs;                   % time-zero for cycle
 
 % One global rectangle covering the entire projector window
 stim.global_rect = full_rect;        % drive whole tray
+
+% =========================================================================
+%  EXPERIMENT MODE
+%  Uncomment exactly ONE of the two blocks below.
+%  update_ymaze_stim() reads stim.mode to decide its behaviour.
+% =========================================================================
+
+% % ---- MODE 1: 5 min ON / 5 min OFF cycling  (standard experiment) --------
+stim.mode        = 'alternating';
+stim.on_dur      = 5 * 60;   % (s) duration of each ON  epoch
+stim.off_dur     = 5 * 60;   % (s) duration of each OFF epoch
+% % -------------------------------------------------------------------------
+
+% ---- MODE 2: Fixed 1 h fixed block  (control experiment) -----------
+% stim.mode        = 'fixed_block';
+% stim.block_dur   = 60 * 60;          % 1 h per block (2 h total)
+% stim.is_on_first = false; % OFF → ON
+% stim.is_on_first = true; % ON → OFF
+% =========================================================================
 
 expmt.meta.stim = stim;
 

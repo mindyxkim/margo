@@ -1,7 +1,7 @@
 function [trackDat, expmt] = update_ymaze_stim(trackDat, expmt)
 % Drives a global rectangular stimulus covering all Y-mazes.
 % Block structure: 5 min ON / 5 min OFF (repeating).
-% Within ON blocks: 30 Hz pulsing (1 frame ON, 1 frame OFF at 60 fps).
+% Within ON blocks: the light is held steady ON.
 % StimStatus: true on frames where the light is physically ON.
 
     stim  = expmt.meta.stim;
@@ -12,16 +12,7 @@ function [trackDat, expmt] = update_ymaze_stim(trackDat, expmt)
     t_in_cycle  = mod(trackDat.t, cycle_T);
     in_on_block = t_in_cycle < stim.on_dur;
 
-    % --- 30 Hz pulsing: toggle every frame during ON blocks ---
-    if in_on_block
-        stim.pulse_ct = stim.pulse_ct + 1;
-        isPulseOn = mod(stim.pulse_ct, 2) == 1;
-    else
-        stim.pulse_ct = 0;
-        isPulseOn = false;
-    end
-
-    stim_on = in_on_block && isPulseOn;
+    stim_on = in_on_block;
 
     % --- draw stimulus ---
     if stim_on
