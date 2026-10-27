@@ -1,7 +1,8 @@
 function [trackDat, expmt] = update_basictrackingstim(trackDat, expmt)
 % Drives a global rectangular stimulus covering the whole tray.
 % Block structure: on_dur ON / off_dur OFF (repeating), starting with ON.
-% The light is held steady for the whole ON block.
+% The light is held steady for the whole ON block, flat-field corrected
+% when the rig has a calibration (see calibrate_projector_flatfield).
 % StimStatus: true on frames where the light is ON.
 
     stim  = expmt.meta.stim;
@@ -12,7 +13,10 @@ function [trackDat, expmt] = update_basictrackingstim(trackDat, expmt)
     stim_on    = t_in_cycle < stim.on_dur;
 
     % --- draw stimulus ---
-    if stim_on
+    if stim_on && stim.flatfield
+        Screen('DrawTexture', expmt.hardware.screen.window, ...
+            stim.flat_tex, [], stim.global_rect);
+    elseif stim_on
         Screen('FillRect', expmt.hardware.screen.window, ...
             stim.fg_color, stim.global_rect);
     else

@@ -48,6 +48,23 @@ stim.off_dur     = 5 * 60;
 % One global rectangle covering the entire projector window
 stim.global_rect = full_rect;      % drive whole tray
 
+% Flat-field correction from calibrate_projector_flatfield, if this rig
+% has been calibrated; otherwise the ON stimulus is plain white
+ff_path = fullfile(fileparts(fileparts(which('margo'))), ...
+    'hardware', 'projector_fit', 'projector_flatfield.mat');
+stim.flatfield = exist(ff_path, 'file') == 2;
+if stim.flatfield
+    ff = load(ff_path, 'cal');
+    stim.flatfield_cal = ff.cal;   % record which calibration was used
+    stim.flat_tex = Screen('MakeTexture', win, ...
+        projector_flatfield_image(ff.cal, full_rect));
+    gui_notify(['flat-field correction loaded (' ff.cal.date ')'], ...
+        gui_handles.disp_note);
+else
+    gui_notify('no flat-field calibration found, using plain white', ...
+        gui_handles.disp_note);
+end
+
 expmt.meta.stim = stim;
 
 % Initialize status (one row per tracked fly)
