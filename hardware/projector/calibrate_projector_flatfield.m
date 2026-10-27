@@ -28,7 +28,9 @@ function cal = calibrate_projector_flatfield(varargin)
 % into the image drawn during stimulus ON.
 %
 % Options:
-%   'Screen'  PTB screen number (default: highest, usually the projector)
+%   'Screen'  PTB screen number (default: the projector screen in margo's
+%             registration settings if the margo GUI is open, otherwise
+%             the highest screen number)
 %   'Grid'    [nx ny] number of measurement points (default [5 5])
 %   'Margin'  fraction of the window left unmeasured at each edge
 %             (default 0.1); set it so the grid covers the arena
@@ -78,17 +80,25 @@ save_path = fullfile(save_dir, 'projector_flatfield.mat');
 
 %% Open the projector window (same settings as initialize_projector)
 
+% close any PTB window left open (margo leaves the projector window open
+% after experiments and registration)
+sca;
 PsychDefaultSetup(2);
 Screen('Preference', 'SkipSyncTests', 1);
+screen_src = '''Screen'' option';
 if isempty(screen_num)
-    screen_num = max(Screen('Screens'));
+    [screen_num, screen_src] = projectorScreen();
 end
-[win, rect] = PsychImaging('OpenWindow', screen_num, 0);
-HideCursor(screen_num);
-W = rect(3);
-H = rect(4);
 
 try
+    [win, rect] = PsychImaging('OpenWindow', screen_num, 0);
+    HideCursor(screen_num);
+    W = rect(3);
+    H = rect(4);
+    fprintf('Projector window on screen %d (%d x %d px), from %s\n', ...
+        screen_num, W, H, screen_src);
+    fprintf('Available screens: %s\n', mat2str(Screen('Screens')));
+
     %% 1. Gamma and dark level at the centre
 
     levels   = [0 0.25 0.5 0.75 1];
@@ -255,11 +265,36 @@ title('Flat-field ON image (1 = full white), + = measured points');
 end
 
 
+function [s, src] = projectorScreen()
+% the projector screen set in margo's registration settings when the margo
+% GUI is open, otherwise the highest screen number (usually the projector)
+s   = max(Screen('Screens'));
+src = 'highest screen number (margo GUI not open)';
+fig = findall(0, 'Tag', 'gui_fig');
+if isempty(fig)
+    return
+end
+try
+    expmt = getappdata(fig(1), 'expmt');
+    s   = expmt.hardware.projector.reg_params.screen_num;
+    src = 'margo projector settings';
+catch
+    src = 'highest screen number (no projector settings in margo)';
+end
+end
+
+
 function showMarker(win, xy)
-% black screen with a white cross centred on xy
-len = 30;
+% black screen with a white cross centred on xy; drawn as two filled
+% rectangles because some drivers reject DrawLines wider than 1 px
+len = 40;
+th  = 3;
+bars = [xy(1)-len  xy(1)-th;
+        xy(2)-th   xy(2)-len;
+        xy(1)+len  xy(1)+th;
+        xy(2)+th   xy(2)+len];
 Screen('FillRect', win, 0);
-Screen('DrawLines', win, [-len len 0 0; 0 0 -len len], 4, 1, xy);
+Screen('FillRect', win, 1, bars);
 Screen('Flip', win);
 end
 
